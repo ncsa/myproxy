@@ -1,8 +1,14 @@
+*.o
 *.la
 *.lo
+.deps
 .libs
 myproxy-date.inc
 BUILD
+compile
+depcomp
+libtool
+test-driver
 Makefile
 Makefile.in
 a.out.dSYM
