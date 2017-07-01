@@ -9,8 +9,6 @@
 #ifndef __MYPROXY_COMMON_H
 #define __MYPROXY_COMMON_H
 
-#include <globus_common.h> /* need to start w/ this to avoid later trouble */
-
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -53,9 +51,7 @@
 typedef int socklen_t;
 #endif
 
-#include <globus_gss_assist.h>
-#include <globus_gsi_system_config.h>
-#include <gssapi.h>
+#include <openssl/ssl.h>
 #include <openssl/bio.h>
 #include <openssl/ui.h>
 

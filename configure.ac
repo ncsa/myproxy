@@ -1,6 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT([myproxy],[6.1.28])
-AC_CONFIG_AUX_DIR([build-aux])
+AC_INIT([myproxy],[7.0.0])
 AM_INIT_AUTOMAKE([foreign])
 LT_INIT([dlopen win32-dll])
 
@@ -10,7 +9,7 @@ AC_SUBST([MAJOR_VERSION], [${PACKAGE_VERSION2%%.*}])
 AC_SUBST([MINOR_VERSION], [${PACKAGE_VERSION2##*.}])
 AC_SUBST([MICRO_VERSION], [${PACKAGE_VERSION##*.}])
 AC_SUBST([AGE_VERSION], [0])
-AC_SUBST([PACKAGE_DEPS], ["globus-gssapi-gsi >= 9, globus-gss-assist >= 8, globus-gsi-sysconfig >= 5, globus-gsi-cert-utils >= 8, globus-gsi-proxy-core >= 6, globus-gsi-credential >= 5, globus-gsi-callback >= 4, globus-common >= 14, globus-usage >= 3"])
+AC_SUBST([PACKAGE_DEPS], [""])
 
 m4_define([myproxy_date], m4_syscmd([
 if git rev-parse --show-toplevel > /dev/null 2>&1; then
@@ -25,26 +24,7 @@ m4_incl[ude(myproxy-date.inc)])dnl
 MYPROXY_DATE="myproxy_date"
 AC_SUBST([MYPROXY_DATE])
 
-PKG_CHECK_EXISTS([globus-proxy-utils], [
-    GSI_PROXY_UTILS_PATH="$($PKG_CONFIG --variable=path globus-proxy-utils)"])
-AC_SUBST([GSI_PROXY_UTILS_PATH])
-PKG_CHECK_EXISTS([globus-gsi-cert-utils], [
-    GSI_CERT_UTILS_PATH="$($PKG_CONFIG --variable=path globus-gsi-cert-utils)"])
-AC_SUBST([GSI_CERT_UTILS_PATH])
-
 AC_PROG_LN_S
-
-AC_ARG_WITH([flavor],
-    AS_HELP_STRING([--with-flavor=FLAVOR], [Build with Globus Flavor]),
-    [
-    GLOBUS_FLAVOR_NAME="$withval"
-    _GLOBUS_FLAVOR_NAME="_$withval"
-    ],
-    [GLOBUS_FLAVOR_NAME=""
-    _GLOBUS_FLAVOR_NAME=""
-    ])
-AC_SUBST(GLOBUS_FLAVOR_NAME)
-AC_SUBST(_GLOBUS_FLAVOR_NAME)
 
 dnl
 dnl Figure out which regular expression parser to use.
@@ -114,104 +94,17 @@ AC_CHECK_DECLS([facilitynames], [], [],
         #include <syslog.h>
   ]])
 dnl
-dnl Check to see if we need "netlibs" (specifically, libnsl and libsocket)
+dnl Check for OpenSSL
 dnl
-uname=`(uname) 2>/dev/null`
-if test "$uname" != IRIX -a "$uname" != IRIX64 ; then
-	AC_CHECK_LIB(socket, socket,
-[	SYSLIBS="$SYSLIBS -lsocket"], ,-lnsl)
-	AC_CHECK_LIB(nsl, t_bind,
-[	SYSLIBS="$SYSLIBS -lnsl"])
-fi
-AC_SUBST(SYSLIBS)
-
-AC_ARG_WITH([gpt],
-	AS_HELP_STRING([--with-gpt], [Use gpt tools to generate compiler/link lines]),
-        [
-if test "$withval" = yes; then
-     GLOBUS_LOCATION=${GLOBUS_LOCATION:-/usr}
-     GPT_LOCATION=${GPT_LOCATION:-$GLOBUS_LOCATION}
-     GPT_LOCATION=${GPT_LOCATION:-/usr}
-     if test x$enable_static != x; then
-         GPT_LINKTYPE=static
-     else
-         GPT_LINKTYPE=shared
-     fi
-     if test -f $GLOBUS_LOCATION/share/globus/globus-build-env-$GLOBUS_FLAVOR_NAME.sh; then
-     	. $GLOBUS_LOCATION/share/globus/globus-build-env-$GLOBUS_FLAVOR_NAME.sh
-     fi
-        if $GPT_LOCATION/sbin/gpt_build_config -src pkgdata/pkg_data_src.gpt.in -f $GLOBUS_FLAVOR_NAME -link $GPT_LINKTYPE; then
-                echo "Dependencies Complete";
-        else
-                exit 1;
-        fi
-
-
-# The following variables are used to manage the build enviroment
-# GPT_CFLAGS, GPT_INCLUDES, GPT_PGM_LINKS, GPT_LIB_LINKS, and GPT_LDFLAGS
-# are the variables used in the Makefile.am's
-# GPT_PKG_CFLAGS, GPT_EXTERNAL_INCLUDES and GPT_EXTERNAL_LIBS are stored
-# as build data in the packaging metadata file.
-# GPT_CONFIG_FLAGS, GPT_CONFIG_INCLUDES, GPT_CONFIG_PGM_LINKS, and
-# GPT_CONFIG_LIB_LINKS are returned by gpt_build_config and contain build
-# environment data from the dependent packages.
-
-
-
-        . ./gpt_build_temp.sh
-        GLOBUS_CFLAGS="$GPT_CONFIG_CFLAGS $GPT_CONFIG_INCLUDES -I$GLOBUS_LOCATION/include/globus -I$GLOBUS_LOCATION/include/globus/$GLOBUS_FLAVOR_NAME"
-        GLOBUS_LIBS="$GPT_CONFIG_LIB_LINKS $GPT_CONFIG_LIBS"
-AC_SUBST(GLOBUS_CFLAGS)
-AC_SUBST(GLOBUS_LIBS)
-with_gpt=yes
-fi
-])
-
-if test x$with_gpt = x; then
-dnl
-dnl The following tests need/use GPT_LIBS
-dnl
-if test "x$PKG_CONFIG_PATH" = "x" -a "x$GLOBUS_LOCATION" != "x" ; then
-   PKG_CONFIG_PATH=$GLOBUS_LOCATION/lib/pkgconfig
-   export PKG_CONFIG_PATH
-fi
-PKG_CHECK_MODULES([GLOBUS], [$PACKAGE_DEPS], [], [AC_MSG_ERROR([GLOBUS_PKG_ERRORS])])
-fi
-PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.0],
-    [OPENSSL_PKGCONFIG="openssl >= 1.0"],
+AC_ARG_WITH(openssl,
+    AS_HELP_STRING([--with-openssl=PATH], [Specify OpenSSL install path]),
     [
-        PKG_CHECK_MODULES([OPENSSL], [openssl101e])
-        OPENSSL_PKGCONFIG="openssl101e"
-        openssl_progs="openssl101e"
-    ])
-CPPFLAGS="$OPENSSL_CFLAGS $CPPFLAGS"
-LIBS="$OPENSSL_LIBS $LIBS"
-openssl_progs="$openssl_progs openssl"
-
-AC_PATH_PROG([OPENSSL],[$openssl_progs])
-AM_CONDITIONAL([ENABLE_TESTS], [test "x$OPENSSL" != x])
-
-dnl
-dnl Check for globus_usage_stats_send
-dnl
-AC_CHECK_LIB(globus_usage,
-             globus_usage_stats_send,
-             AC_DEFINE(HAVE_GLOBUS_USAGE),
-             )
-dnl
-dnl Check for globus_usage_stats_send_array
-dnl
-AC_CHECK_LIB(globus_usage,
-             globus_usage_stats_send_array,
-             AC_DEFINE(HAVE_GLOBUS_USAGE_SEND_ARRAY),
-             )
-dnl
-dnl Check for globus_gsi_proxy_handle_set_extensions
-dnl
-AC_CHECK_LIB(globus_gsi_proxy_core,
-             globus_gsi_proxy_handle_set_extensions,
-             AC_DEFINE(HAVE_GLOBUS_GSI_PROXY_HANDLE_SET_EXTENSIONS),
-             )
+		   CPPFLAGS="-I${withval}/include $CPPFLAGS"
+		   LDFLAGS="-L${withval}/lib $LDFLAGS"
+    ]
+)
+AC_CHECK_LIB(ssl, SSL_library_init, ,
+                  AC_MSG_ERROR([libssl not found]))
 dnl
 dnl Check for OCSP
 dnl
@@ -358,7 +251,6 @@ AM_CONDITIONAL([HAVE_VOMS], [test x"$HAVE_VOMS" = x1])
 
 AC_CONFIG_FILES([
 	Makefile
-	web/Makefile
 	systemd/Makefile
 	man/Makefile
 	myproxy.h
