@@ -1,2 +1,4 @@
 Makefile
 Makefile.in
+myproxy-logon.1
+myproxy-admin-addservice.8
