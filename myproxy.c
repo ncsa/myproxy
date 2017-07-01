@@ -510,10 +510,7 @@ myproxy_bootstrap_trust(myproxy_socket_attrs_t *attrs)
 
     myproxy_log("Bootstrapping MyProxy server root of trust.");
 
-	globus_module_activate(GLOBUS_GSI_PROXY_MODULE);
-	globus_module_activate(GLOBUS_GSI_CREDENTIAL_MODULE);
-	globus_module_activate(GLOBUS_GSI_CERT_UTILS_MODULE);
-
+	(void)SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_ssl_algorithms();
 
