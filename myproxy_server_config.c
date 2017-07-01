@@ -1163,6 +1163,7 @@ check_config(myproxy_server_context_t *context)
     }
     }
     if (context->accepted_credentials_mapfile) {
+#if GLOBUS
         if (access(context->accepted_credentials_mapfile, R_OK) < 0) {
             verror_put_string("accepted_credentials_mapfile %s not readable",
                               context->accepted_credentials_mapfile);
@@ -1172,6 +1173,11 @@ check_config(myproxy_server_context_t *context)
             myproxy_log("using accepted_credentials_mapfile %s",
                         context->accepted_credentials_mapfile);
         }
+#else
+        verror_put_string("accepted_credentials_mapfile option unsupported");
+        verror_put_errno(errno);
+        rval = -1;
+#endif
     }
 	if (context->accepted_credentials_mapapp &&
 	    access(context->accepted_credentials_mapapp, X_OK) < 0) {

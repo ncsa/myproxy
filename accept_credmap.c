@@ -1,6 +1,7 @@
 #include "myproxy_common.h"
 
 
+#if GLOBUS
 static int
 consult_mapfile ( char * mapfile, char * userdn, char * username ) {
 
@@ -27,7 +28,7 @@ consult_mapfile ( char * mapfile, char * userdn, char * username ) {
 
     return retval; 
 }
-
+#endif
 
 static int
 consult_mapapp ( char * mapapp, char * userdn, char * username) {
@@ -128,13 +129,15 @@ int accept_credmap( char * userdn, char * username,
             retval = -1;
         }            
 
+#if GLOBUS
         if (consult_mapfile(server_context->accepted_credentials_mapfile,
                            userdn,username)) {
             verror_put_string("Accepted credentials failure for DN/Username "
                               "via grid-mapfile");
             retval = 1;
         }
-
+#endif
+        
     }
 
     return retval;
