@@ -42,3 +42,5 @@ myproxy-logon
 myproxy-retrieve
 myproxy-server
 myproxy-store
+myproxy.h
+myproxy.pc
