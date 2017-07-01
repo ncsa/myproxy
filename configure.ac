@@ -105,10 +105,11 @@ AC_ARG_WITH(openssl,
 )
 AC_CHECK_LIB(ssl, SSL_library_init, ,
                   AC_MSG_ERROR([libssl not found]))
+AC_CHECK_LIB(crypto, OCSP_basic_verify, AC_DEFINE(HAVE_OCSP),
+                  AC_MSG_ERROR([libcrypto not found]))
 dnl
-dnl Check for OCSP
+dnl SASL
 dnl
-AC_CHECK_FUNC(OCSP_basic_verify, AC_DEFINE(HAVE_OCSP))
 AC_ARG_WITH(sasl2,
     AS_HELP_STRING([--with-sasl2=PATH], [Build with SASL V2 support]),
 	[
