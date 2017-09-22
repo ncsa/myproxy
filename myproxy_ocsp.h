@@ -6,6 +6,7 @@
 
 #include <openssl/ssl.h>
 
+#if GLOBUS_TODO
 /*
  * Set configuration value.
  * Return 0 on success, -1 on error (setting verror).
@@ -21,5 +22,6 @@ int myproxy_ocsp_set_times(long skew, long maxage);
  * Return 1 if revoked, 0 if valid, <0 on error (setting verror).
 */
 int myproxy_ocsp_verify(X509 *cert, X509 *issuer);
+#endif
 
 #endif

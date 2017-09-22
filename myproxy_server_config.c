@@ -24,6 +24,11 @@
 #define REGULAR_EXP 1
 #define NON_REGULAR_EXP 0
 
+#if GLOBUS_TODO
+#else
+#undef HAVE_OCSP
+#endif
+
 /**********************************************************************
  *
  * Internal Functions

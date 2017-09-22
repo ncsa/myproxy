@@ -37,7 +37,9 @@ struct _ssl_credentials
     EVP_PKEY		*private_key;
     STACK_OF(X509)	*certificate_chain;
 
+#if GLOBUS
     globus_gsi_proxy_handle_t	proxy_req;
+#endif
 };
 
 struct _ssl_proxy_restrictions
@@ -103,6 +105,7 @@ ssl_error_to_verror()
     ERR_clear_error();
 }
 
+#if GLOBUS
 /*
  * globus_error_to_verror()
  *
@@ -122,6 +125,7 @@ globus_error_to_verror(globus_result_t result)
     verror_put_string("%s", desc);
     free(desc);
 }
+#endif
 
 /*
  * bio_from_buffer()
@@ -413,10 +417,12 @@ my_init()
 
     SSL_library_init();
 
+#if GLOBUS
 	globus_module_activate(GLOBUS_GSI_PROXY_MODULE);
 	globus_module_activate(GLOBUS_GSI_CREDENTIAL_MODULE);
 	globus_module_activate(GLOBUS_GSI_SYSCONFIG_MODULE);
 	globus_module_activate(GLOBUS_GSI_CERT_UTILS_MODULE);
+#endif
     }
 }
 
@@ -1365,6 +1371,7 @@ ssl_proxy_delegation_init(SSL_CREDENTIALS	**new_creds,
 			  void			(*callback)(int,int,void *))
 {
     int				return_status = SSL_ERROR;
+#if GLOBUS
     globus_result_t		local_result;
     globus_gsi_proxy_handle_attrs_t proxy_handle_attrs = NULL;
     BIO	      			*bio = NULL;
@@ -1446,6 +1453,7 @@ ssl_proxy_delegation_init(SSL_CREDENTIALS	**new_creds,
     if (bio) {
 	BIO_free(bio);
     }
+#endif
     
     return return_status;
 }
@@ -1459,8 +1467,10 @@ ssl_proxy_delegation_finalize(SSL_CREDENTIALS	*creds,
     BIO				*bio = NULL;
     int				return_status = SSL_ERROR;
     unsigned char		number_of_certs;
+#if GLOBUS
     globus_result_t		local_result;
     globus_gsi_cred_handle_t	cred_handle;
+#endif
 
     assert(creds != NULL);
     assert(buffer != NULL);
@@ -1496,6 +1506,7 @@ ssl_proxy_delegation_finalize(SSL_CREDENTIALS	*creds,
 	goto error;
     }
 
+#if GLOBUS
     if (creds->proxy_req) {
 
     /* read the proxy certificate and certificate chain */
@@ -1535,6 +1546,9 @@ ssl_proxy_delegation_finalize(SSL_CREDENTIALS	*creds,
     globus_gsi_cred_handle_destroy(cred_handle);
 
     } else {
+#else
+    {
+#endif
         X509                   *proxy_cert = NULL;
         int                     cert_index = 0;
         STACK_OF(X509)         *cert_chain = NULL;
@@ -1594,6 +1608,8 @@ ssl_proxy_delegation_finalize(SSL_CREDENTIALS	*creds,
     
     return return_status;
 }
+
+#if GLOBUS
 
 int
 ssl_proxy_delegation_sign(SSL_CREDENTIALS		*creds,
@@ -1823,6 +1839,7 @@ ssl_proxy_delegation_sign(SSL_CREDENTIALS		*creds,
 
     return return_status;
 }
+#endif
 
 
 void
@@ -1925,6 +1942,7 @@ ssl_proxy_restrictions_set_limited(SSL_PROXY_RESTRICTIONS	*restrictions,
     return return_value;
 }
 
+#if GLOBUS
 int
 ssl_get_base_subject_file(const char *proxyfile, char **subject)
 {
@@ -1988,6 +2006,7 @@ ssl_get_base_subject(SSL_CREDENTIALS *creds, char **subject)
 
    return SSL_SUCCESS;
 }
+#endif
 
 int
 ssl_creds_to_buffer(SSL_CREDENTIALS *creds, unsigned char **buffer,
@@ -2027,6 +2046,7 @@ ssl_creds_from_buffer(unsigned char *buffer, int buffer_length,
    return SSL_SUCCESS;
 }
 
+#if GLOBUS
 int
 ssl_creds_certificate_is_proxy(SSL_CREDENTIALS *creds)
 {
@@ -2053,6 +2073,7 @@ ssl_creds_certificate_is_proxy(SSL_CREDENTIALS *creds)
   error:
     return return_status;
 }
+#endif
 
 int
 ssl_sign(unsigned char *data, int length,
@@ -2107,6 +2128,7 @@ ssl_verify(unsigned char *data, int length,
    return SSL_SUCCESS;
 }
 
+#if GLOBUS
 /* Chain verifying is inspired by proxy_verify_chain() from GSI. */
 int
 ssl_verify_gsi_chain(SSL_CREDENTIALS *chain)
@@ -2312,6 +2334,7 @@ ssl_limited_proxy_file(const char path[])
    if (creds) ssl_credentials_destroy(creds);
    return return_value;
 }
+#endif
 
 int
 ssl_get_times(const char *path, time_t *not_before, time_t *not_after)
@@ -2340,6 +2363,7 @@ ssl_get_times(const char *path, time_t *not_before, time_t *not_after)
    setenv("TZ", "", 1);
    tzset();
 
+#if GLOBUS_TODO
    while ((cert = PEM_read_X509(cert_file, NULL, PEM_NO_CALLBACK)) != NULL) {
        if (not_before) {
 	   time_t new_not_before;
@@ -2360,6 +2384,7 @@ ssl_get_times(const char *path, time_t *not_before, time_t *not_after)
        X509_free(cert);
        cert = NULL;
    }
+#endif
 
    if (tz)
        setenv("TZ", tz, 1);
@@ -2380,8 +2405,12 @@ ssl_verify_cred(const char path[])
 
     /* Do the certificates check out with OpenSSL? */
 	if ((ssl_creds = ssl_credentials_new()) == NULL ||
+#if GLOBUS_TODO
         ssl_certificate_load_from_file(ssl_creds, path) != SSL_SUCCESS ||
         ssl_verify_gsi_chain(ssl_creds) != SSL_SUCCESS) {
+#else
+        ssl_certificate_load_from_file(ssl_creds, path) != SSL_SUCCESS) {
+#endif
         ssl_credentials_destroy(ssl_creds);
         return -1;
     }

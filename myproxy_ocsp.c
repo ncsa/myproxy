@@ -72,6 +72,7 @@ static long      skew         = MYPROXY_DEFAULT_CLOCK_SKEW;
 static long      maxage       = -1;
 static int       usenonce     = 0;
 
+#if GLOBUS_TODO
 int
 myproxy_ocsp_set_responder(const char *newurl) {
     if (responder_url) free(responder_url);
@@ -402,4 +403,5 @@ end:
 
   return result;
 }
+#endif
 #endif

@@ -76,7 +76,11 @@ void GSI_SOCKET_clear_error(GSI_SOCKET *gsi_socket);
  * acceptable peer names, and GSI_SOCKET_ERROR otherwise.
  */
 int GSI_SOCKET_authentication_init(GSI_SOCKET *gsi_socket,
+#if GLOBUS
 				   gss_name_t accepted_peer_names[]);
+#else
+				   char *accepted_peer_names[], myproxy_socket_attrs_t *attrs);
+#endif
 
 /*
  * GSI_SOCKET_use_creds()

@@ -14,6 +14,7 @@ int resolve_via_mapfile ( char * username, char ** dn ) {
 
   myproxy_debug("resolve_via_mapfile()");
 
+#if GLOBUS_TODO
   if ( globus_gss_assist_map_local_user( username,
 					 &userdn ) ) {
     return_value = 1;
@@ -21,6 +22,7 @@ int resolve_via_mapfile ( char * username, char ** dn ) {
   }
 
   *dn = userdn;
+#endif
 
  end:
   if (return_value) {

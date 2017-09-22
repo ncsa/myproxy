@@ -7,6 +7,7 @@
  */
 
 #include "myproxy_common.h"	/* all needed headers included here */
+#include "pwd.h"
 
 /**********************************************************************
  *

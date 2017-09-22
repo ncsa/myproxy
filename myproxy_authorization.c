@@ -4,6 +4,7 @@
 #include "auth_pam.h"
 #endif
 
+#if GLOBUS_TODO
 struct authorization_func {
    author_status_t (*get_status) (struct myproxy_creds *creds,
 				  char *client_name,
@@ -723,3 +724,4 @@ authorization_create_response(authorization_data_t **data,
 
    return d;
 }
+#endif

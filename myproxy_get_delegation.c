@@ -76,8 +76,10 @@ init_arguments(int argc, char *argv[],
 	       myproxy_socket_attrs_t *attrs,
 	       myproxy_request_t *request); 
 
+#if GLOBUS
 int
 voms_proxy_init();
+#endif
 
 /*
  * Use setvbuf() instead of setlinebuf() since cygwin doesn't support
@@ -134,9 +136,13 @@ main(int argc, char *argv[])
     init_arguments(argc, argv, socket_attrs, client_request);
 
     if (!outputfile && !no_credentials) {
+#if GLOBUS
 	globus_module_activate(GLOBUS_GSI_SYSCONFIG_MODULE);
 	GLOBUS_GSI_SYSCONFIG_GET_PROXY_FILENAME(&outputfile,
 						GLOBUS_PROXY_FILE_OUTPUT);
+#else
+outputfile = strdup("/tmp/tmp_x509");
+#endif
     }
 
     /* Connect to server and authenticate.
@@ -168,6 +174,7 @@ main(int argc, char *argv[])
     }
 
     if (client_request->username == NULL) { /* set default username */
+#if GLOBUS_TODO
 	if (dn_as_username) {
 	    if (client_request->authzcreds) {
 		if (ssl_get_base_subject_file(client_request->authzcreds,
@@ -185,13 +192,16 @@ main(int argc, char *argv[])
 		}
 	    }
 	} else {
+#endif
 	    char *username = NULL;
 	    if (!(username = getenv("LOGNAME"))) {
 		fprintf(stderr, "Please specify a username.\n");
 		goto cleanup;
 	    }
 	    client_request->username = strdup(username);
+#if GLOBUS_TODO
 	}
+#endif
     }
 
     if (myproxy_get_delegation(socket_attrs, client_request, NULL,
@@ -202,12 +212,14 @@ main(int argc, char *argv[])
     }
 
     if (outputfile) {
+#if GLOBUS
         if (voms && (! has_voms_extension(outputfile)) ) {
             if (voms_proxy_init() < 0) { /* should an error be fatal? */
                 fprintf(stderr, "Warning: Failed to add VOMS attributes.\n");
                 verror_print_error(stderr);
             }
         }
+#endif
 
         if (!quiet)
             printf("A credential has been received for user %s in %s.\n",
@@ -383,6 +395,7 @@ init_arguments(int argc,
     return;
 }
 
+#if GLOBUS
 int
 voms_proxy_init()
 {
@@ -511,3 +524,4 @@ voms_proxy_init()
 
     return rc;
 }
+#endif

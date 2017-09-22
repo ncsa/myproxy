@@ -26,6 +26,7 @@ GSI_SOCKET_set_error_string(GSI_SOCKET *self,
     return GSI_SOCKET_SUCCESS;
 }
 
+#if GLOBUS
 /*
  * append_gss_status()
  *
@@ -75,6 +76,7 @@ append_gss_status(char *buffer,
     
     return total_chars;
 }
+#endif
 
 /*
  * read_all()
@@ -339,11 +341,15 @@ GSI_SOCKET_new(int sock)
 
     memset(self, 0, sizeof(GSI_SOCKET));
     
+#if GLOBUS
     self->gss_context = GSS_C_NO_CONTEXT;
+#endif
     self->sock = sock;
 
+#if GLOBUS
     globus_module_activate(GLOBUS_GSI_GSS_ASSIST_MODULE);
     globus_module_activate(GLOBUS_GSI_SYSCONFIG_MODULE);
+#endif
 
     return self;
 }
@@ -357,6 +363,7 @@ GSI_SOCKET_destroy(GSI_SOCKET *self)
 	return;
     }
     
+#if GLOBUS
     if (self->gss_context != GSS_C_NO_CONTEXT)
     {
 	gss_buffer_desc output_token_desc  = GSS_C_EMPTY_BUFFER;
@@ -368,6 +375,7 @@ GSI_SOCKET_destroy(GSI_SOCKET *self)
 	/* XXX Should deal with output_token_desc here */
 	gss_release_buffer(&self->minor_status, &output_token_desc);
     }
+#endif
 
     if (self->peer_name != NULL)
     {
@@ -445,6 +453,7 @@ GSI_SOCKET_get_error_string(GSI_SOCKET *self,
 	bufferlen -= chars;
     }
 
+#if GLOBUS
     if (self->major_status)
     {
 	if (total_chars && bufferlen && *(buffer-1) != '\n') {
@@ -486,6 +495,7 @@ GSI_SOCKET_get_error_string(GSI_SOCKET *self,
 	buffer = &buffer[chars];
 	bufferlen -= chars;
     }
+#endif
 
     if (total_chars == 0)
     {
@@ -513,8 +523,10 @@ GSI_SOCKET_clear_error(GSI_SOCKET *self)
 	self->error_string = NULL;
     }
     self->error_number = 0;
+#if GLOBUS
     self->major_status = 0;
     self->minor_status = 0;
+#endif
 }
 
 
@@ -563,11 +575,16 @@ GSI_SOCKET_set_max_token_len(GSI_SOCKET *self, int bytes)
 int
 GSI_SOCKET_context_established(GSI_SOCKET *self)
 {
+#if GLOBUS
     if (self->gss_context == GSS_C_NO_CONTEXT) {
+#else
+    if (self->ssl_ctx == NULL) {
+#endif
         return 0;
     }
 
     return 1;
+
 }
 
 /* XXX This routine really needs a complete overhaul */
@@ -595,13 +612,16 @@ GSI_SOCKET_use_creds(GSI_SOCKET *self,
 int
 GSI_SOCKET_check_creds(GSI_SOCKET *self)
 {
+#if GLOBUS
     gss_cred_id_t		creds = GSS_C_NO_CREDENTIAL;
+#endif
     int				return_value = GSI_SOCKET_ERROR;
 
     if (self == NULL) {	
 	return GSI_SOCKET_ERROR;
     }
 
+#if GLOBUS
     self->major_status = globus_gss_assist_acquire_cred(&self->minor_status,
 							GSS_C_BOTH,
 							&creds);
@@ -619,42 +639,75 @@ GSI_SOCKET_check_creds(GSI_SOCKET *self)
 
 	gss_release_cred(&minor_status, &creds);
     }
+#else
+    return_value = GSI_SOCKET_ERROR;
+#endif
     
     return return_value;
 }
 
 int
+#if GLOBUS
 GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[])
+#else
+GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], myproxy_socket_attrs_t *attrs)
+#endif
 {
     int				token_status;
+#if GLOBUS
     gss_cred_id_t		creds = GSS_C_NO_CREDENTIAL;
     gss_name_t			server_gss_name = GSS_C_NO_NAME;
     OM_uint32			req_flags = 0, ret_flags = 0;
+#endif
     int				return_value = GSI_SOCKET_ERROR;
+#if GLOBUS
     gss_buffer_desc		gss_buffer = { 0 };
     gss_name_t			target_name = GSS_C_NO_NAME;
     gss_OID			target_name_type = GSS_C_NO_OID;
+#endif
     int				i, rc=0, sock;
     FILE			*fp = NULL;
     char                        *cert_dir = NULL;
+#if GLOBUS
     globus_result_t res;
+#else
+    BIO *sbio = 0;
+    SSL_CTX *ctx = 0;
+    SSL *ssl = 0;
+
+#endif
     
+#if GLOBUS
     if (self == NULL)
+#else
+    if (self == NULL || self->sock <= 0)
+#endif
     {
+        myproxy_debug("Self is NULL or sock not set\n");
 	return GSI_SOCKET_ERROR;
     }
 
     if (accepted_peer_names == NULL ||
+#if GLOBUS
 	accepted_peer_names[0] == GSS_C_NO_NAME) {
+#else
+	accepted_peer_names[0] == NULL) {
+#endif
+        myproxy_debug("accepted_peer_names (%s)\n", accepted_peer_names[0]?:"NULL");
 	return GSI_SOCKET_ERROR;
     }
 
+#if GLOBUS
     if (self->gss_context != GSS_C_NO_CONTEXT)
+#else
+    if (self->sbio != NULL)
+#endif
     {
 	GSI_SOCKET_set_error_string(self, "GSI_SOCKET already authenticated");
 	goto error;
     }
 
+#if GLOBUS_TODO
     res = GLOBUS_GSI_SYSCONFIG_GET_CERT_DIR(&cert_dir);
     if (res == GLOBUS_SUCCESS) {
         myproxy_debug("using trusted certificates directory %s", cert_dir);
@@ -663,7 +716,9 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[
         globus_error_to_verror(res);
         goto error;
     }
+#endif
 
+#if GLOBUS
     self->major_status = globus_gss_assist_acquire_cred(&self->minor_status,
 							GSS_C_INITIATE,
 							&creds);
@@ -682,6 +737,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[
     req_flags |= GSS_C_MUTUAL_FLAG;
     req_flags |= GSS_C_CONF_FLAG;
     req_flags |= GSS_C_INTEG_FLAG;
+#endif
 
     if ((sock = dup(self->sock)) < 0) {
 	GSI_SOCKET_set_error_string(self, "dup() of socket fd failed");
@@ -699,6 +755,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[
 	goto error;
     }
     
+#if GLOBUS
     self->major_status =
 	globus_gss_assist_init_sec_context(&self->minor_status,
 					   creds,
@@ -717,7 +774,40 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[
     }
 
     
+#else
+SSL_library_init();
+SSL_load_error_strings();
+OpenSSL_add_ssl_algorithms();
+    #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
+    ctx = SSL_CTX_new(TLS_client_method());
+    SSL_CTX_set_min_proto_version(ctx, TLS1_VERSION);
+    #else
+    ctx = SSL_CTX_new(SSLv23_client_method());
+    /* No longer setting SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS since it seemed
+ *      * like a stop-gap measure to interoperate with broken SSL */
+    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+    #endif
+
+    if (!(sbio = BIO_new_ssl_connect(ctx))) goto error;
+    BIO_get_ssl(sbio, &ssl);
+    char chport[6];
+    snprintf(chport, sizeof(chport), "%d", attrs->psport);
+    BIO_set_conn_port(sbio, chport);
+    BIO_set_conn_hostname(sbio, attrs->pshost);
+fprintf(stderr, "SETTING SOCKFD to %d\n", self->sock);
+    BIO_set_fd(sbio, self->sock, 0);
+
+    if (BIO_do_handshake(sbio) <= 0) goto error;
+    BIO_write(sbio, "0", 1);    /* GSI deleg flag */
+    if (BIO_flush(sbio) <= 0) goto error;
+
+    self->ssl_ctx = ctx;
+    self->ssl = ssl;
+    self->sbio = sbio;
+#endif
+
     /* Verify that all service requests were honored. */
+#if GLOBUS_TODO
     req_flags &= ~(GSS_C_ANON_FLAG); /* GSI GSSAPI doesn't set this flag */
     if ((req_flags & ret_flags) != req_flags) {
       GSI_SOCKET_set_error_string(self,
@@ -748,6 +838,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[
     }
 
     self->peer_name = strdup(gss_buffer.value);
+
     myproxy_debug("server name: %s", self->peer_name);
     myproxy_debug("checking that server name is acceptable...");
 
@@ -807,27 +898,30 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[
 	goto error;
     }
     myproxy_debug("authenticated server name is acceptable");
+#endif
 
     /* Success */
     return_value = GSI_SOCKET_SUCCESS;
     
   error:
+#if GLOBUS
     {
 	OM_uint32 minor_status;
 	gss_release_cred(&minor_status, &creds);
 	gss_release_buffer(&minor_status, &gss_buffer);
 	gss_release_name(&minor_status, &server_gss_name);
     }
+#endif
     if (cert_dir) free(cert_dir);
     if (fp) fclose(fp);
     
     return return_value;
 }
 
-
 int
 GSI_SOCKET_authentication_accept(GSI_SOCKET *self)
 {
+#if GLOBUS
     gss_cred_id_t		creds = GSS_C_NO_CREDENTIAL;
     int				token_status;
     int				return_value = GSI_SOCKET_ERROR;
@@ -930,6 +1024,9 @@ GSI_SOCKET_authentication_accept(GSI_SOCKET *self)
     if (fp) fclose(fp);
     
     return return_value;
+#else
+    return GSI_SOCKET_SUCCESS;
+#endif
 }
 
 int
@@ -1065,6 +1162,7 @@ GSI_SOCKET_write_buffer(GSI_SOCKET *self,
 			const size_t buffer_len)
 {
     int return_value = GSI_SOCKET_ERROR;
+    int bytes_written = 0;
     
     if (self == NULL)
     {
@@ -1084,6 +1182,7 @@ GSI_SOCKET_write_buffer(GSI_SOCKET *self,
 	return 0;
     }
     
+#if GLOBUS
     if (self->gss_context == GSS_C_NO_CONTEXT)
     {
 	/* No context established, just send in the clear */
@@ -1138,6 +1237,13 @@ GSI_SOCKET_write_buffer(GSI_SOCKET *self,
 	gss_release_buffer(&self->minor_status, &wrapped_buffer);
     }
 /*     fprintf(stderr, "\nwrote:\n%s\n", buffer); */
+#else
+    bytes_written = SSL_write(self->ssl, buffer, buffer_len);
+    fprintf(stderr, "\nwrote:\n%d out of %d\n", bytes_written, buffer_len);
+    if (bytes_written == buffer_len)
+        return_value = 0;
+    if (BIO_flush(self->sbio) <= 0) goto error;
+#endif
   error:
     return return_value;
 }
@@ -1163,7 +1269,10 @@ int GSI_SOCKET_read_token(GSI_SOCKET *self,
     static int          saved_buffer_len = 0;
     unsigned char	*buffer;
     int			return_status = GSI_SOCKET_ERROR;
+    static unsigned char local_buffer[10024];
+
     
+#if GLOBUS
     if (saved_buffer) {
 
 	buffer = saved_buffer;
@@ -1266,7 +1375,33 @@ int GSI_SOCKET_read_token(GSI_SOCKET *self,
 	myproxy_debug("read a non-null-terminated message");
     }
 #endif
-    
+
+#else
+
+    int retval;
+    do {
+	fd_set rfds;
+	struct timeval tv = { 0 };
+
+        bytes_read = BIO_read(self->sbio, local_buffer, sizeof(local_buffer));
+        if (bytes_read > 0)
+	{
+  fprintf(stderr, "\nBytes read:\n%d\n", bytes_read);
+  *pbuffer = malloc((bytes_read+1) * sizeof (unsigned char)); /* GLOBUS_TODO */
+  memcpy(*pbuffer, local_buffer, bytes_read * sizeof (unsigned char));
+  *pbuffer_len = bytes_read;
+  (*pbuffer)[bytes_read] = NULL;
+  return GSI_SOCKET_SUCCESS;
+	}
+
+	/* Check for more data on the socket.  We want the entire
+	   message and SSL may have fragmented it. */
+	FD_ZERO(&rfds);
+	FD_SET(self->sock, &rfds);
+	retval = select((self->sock)+1, &rfds, NULL, NULL, &tv);
+    } while (retval > -1);
+#endif
+
   error:
     return return_status;
 }
@@ -1285,6 +1420,7 @@ int GSI_SOCKET_delegation_init_ext(GSI_SOCKET *self,
 				   const char *passphrase)
 {
     int				return_value = GSI_SOCKET_ERROR;
+#if GLOBUS
     SSL_CREDENTIALS		*creds = NULL;
     SSL_PROXY_RESTRICTIONS	*proxy_restrictions = NULL;
     unsigned char		*input_buffer = NULL;
@@ -1416,6 +1552,7 @@ int GSI_SOCKET_delegation_init_ext(GSI_SOCKET *self,
     {
 	ssl_proxy_restrictions_destroy(proxy_restrictions);
     }
+#endif
     
     return return_value;
 }
@@ -1448,7 +1585,11 @@ GSI_SOCKET_delegation_accept(GSI_SOCKET *self,
 	goto error;
     }
     
+#if GLOBUS
     if (self->gss_context == GSS_C_NO_CONTEXT)
+#else
+    if (self->ssl_ctx == NULL)
+#endif
     {
 	GSI_SOCKET_set_error_string(self, "GSI_SOCKET not authenticated");
 	return GSI_SOCKET_ERROR;
@@ -1639,6 +1780,7 @@ int GSI_SOCKET_credentials_accept_ext(GSI_SOCKET *self,
                                       int         credentials_len)
 {
     int                        return_value       = GSI_SOCKET_ERROR;
+#if GLOBUS
     SSL_CREDENTIALS           *creds              = NULL;
     SSL_PROXY_RESTRICTIONS    *proxy_restrictions = NULL;
     unsigned char             *input_buffer       = NULL;
@@ -1756,6 +1898,7 @@ int GSI_SOCKET_credentials_accept_ext(GSI_SOCKET *self,
     }
 
     if (filename) free(filename);
+#endif
 
     return return_value;
 }
@@ -1765,6 +1908,7 @@ GSI_SOCKET_credentials_init_ext(GSI_SOCKET *self,
                                 const char *source_credentials)
 {
     int                        return_value       = GSI_SOCKET_ERROR;
+#if GLOBUS
     SSL_PROXY_RESTRICTIONS    *proxy_restrictions = NULL;
     unsigned char             *output_buffer      = NULL;
 
@@ -1800,6 +1944,7 @@ GSI_SOCKET_credentials_init_ext(GSI_SOCKET *self,
     {
       ssl_proxy_restrictions_destroy(proxy_restrictions);
     }
+#endif
 
     return return_value;
 }
@@ -1809,6 +1954,7 @@ GSI_SOCKET_get_creds(GSI_SOCKET *self,
                      const char *source_credentials)
 {
     int                          return_value       = GSI_SOCKET_ERROR;
+#if GLOBUS
     unsigned char               *output_buffer      = NULL;
     int                          output_buffer_length;
 
@@ -1849,6 +1995,7 @@ GSI_SOCKET_get_creds(GSI_SOCKET *self,
     {
       free(output_buffer);
     }
+#endif
 
     return return_value;
 }

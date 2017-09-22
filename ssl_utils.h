@@ -16,12 +16,14 @@
 #include <openssl/des.h>
 #include <time.h>
 
+#if GLOBUS
 #include <globus_gsi_callback.h>
 #include <globus_gsi_cert_utils.h>
 #include <globus_gsi_credential.h>
 #include <globus_gsi_proxy.h>
 #include <globus_gsi_system_config.h>
 #include <globus_gsi_system_config_constants.h>
+#endif
 
 /* EVP_MD_CTX_init() and EVP_MD_CTX_cleanup() not in OpenSSL 0.9.6. */
 #if !defined(EVP_MD_CTX_FLAG_CLEANED)
@@ -330,6 +332,7 @@ int ssl_proxy_restrictions_set_limited(SSL_PROXY_RESTRICTIONS *restrictions,
 					const int limited);
 
 			   
+#if GLOBUS_TODO
 /* ssl_get_base_subject_file()
  *
  * Get user's subject name from certificate in the supplied filename
@@ -347,6 +350,7 @@ ssl_get_base_subject_file(const char *proxyfile, char **subject);
  */
 int
 ssl_get_base_subject(SSL_CREDENTIALS *creds, char **subject);
+#endif
 
 /* 
  * ssl_creds_to_buffer()
@@ -397,6 +401,7 @@ int ssl_sign(unsigned char *data, int length, SSL_CREDENTIALS *creds,
 int ssl_verify(unsigned char *data, int length, SSL_CREDENTIALS *creds,
                unsigned char *signature, int signature_len);
 
+#if GLOBUS_TODO
 /*
  * int ssl_verify_gsi_chain()
  *
@@ -413,6 +418,7 @@ int ssl_verify_gsi_chain(SSL_CREDENTIALS *chain);
  * 0 if not, -1 on error.
  */
 int ssl_limited_proxy_chain(SSL_CREDENTIALS *chain);
+#endif
 
 /*
  * int ssl_limited_proxy_file()
@@ -435,12 +441,14 @@ int ssl_get_times(const char *proxyfile, time_t *not_before, time_t *not_after);
  */
 void ssl_error_to_verror();
 
+#if GLOBUS
 /*
  * globus_error_to_verror()
  *
  * Transfer an error description out of the Globus error handler to verror.
  */
 void globus_error_to_verror(globus_result_t result);
+#endif
 
 /*
  * ssl_verify_cred()

@@ -661,6 +661,7 @@ myproxy_bootstrap_client(myproxy_socket_attrs_t *socket_attrs,
     int return_value = -1;
 
     /* Bootstrap trusted certificate directory if none exists. */
+#if GLOBUS_TODO
     if (bootstrap_if_no_cert_dir) {
         char *cert_dir = NULL;
         globus_result_t res;
@@ -675,6 +676,7 @@ myproxy_bootstrap_client(myproxy_socket_attrs_t *socket_attrs,
         }
         if (cert_dir) free(cert_dir);
     }
+#endif
 
     /* Connect to server. */
     if (myproxy_init_client(socket_attrs) < 0) {
@@ -761,6 +763,7 @@ myproxy_init_client(myproxy_socket_attrs_t *attrs) {
             close(attrs->socket_fd);
             attrs->socket_fd = -1;
         } else { /* Everything is good! Clear out the error string. */
+fprintf(stderr, "GSISCOKET GOOD!!!!!!!!!!!!\n");
             verror_clear();
         }
     }
@@ -790,7 +793,11 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
 {
    char error_string[1024];
    char peer_name[1024] = "";
+#if GLOBUS
    gss_name_t accepted_peer_names[3] = { 0 };
+#else
+   char *accepted_peer_names[3] = { 0 };
+#endif
    char *server_dn;
    int  rval, return_value = -1;
 
@@ -810,6 +817,7 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
     */
    server_dn = getenv("MYPROXY_SERVER_DN");
    if (server_dn) {
+#if GLOBUS
        gss_buffer_desc server_dn_buffer;
        gss_buffer_desc status_buffer;
        OM_uint32 major_status, minor_status;
@@ -843,9 +851,13 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
                verror_put_string("Error getting name of remote party");
            }
        }
+#else
+       accepted_peer_names[0] = strdup(server_dn);
+#endif
    } else {
        char *fqhn, *buf;
        if (new_server_identity_check_behavior_needed()) {
+#if GLOBUS
            OM_uint32 major_status, minor_status;
            gss_buffer_desc hostip;
            int rc;
@@ -896,11 +908,18 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
 
                goto error;
            }
+#else
+	   accepted_peer_names[0] = strdup(attrs->pshost);
+#endif
        } else { /* old way */
+#if GLOBUS
            gss_buffer_desc name_buf;
+#endif
            const char *services[] = { "myproxy", "host" };
            int s;
+#if GLOBUS
            OM_uint32 major_status, minor_status;
+#endif
 
              fqhn = GSI_SOCKET_get_peer_hostname(attrs->gsi_socket);
              if (!fqhn) {
@@ -910,6 +929,7 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
                                    error_string);
                  goto error;
              }
+#if GLOBUS_TODO
              for (s = 0; s < (sizeof services)/(sizeof *services); s++)
              {
                name_buf.value = globus_common_create_string("%s@%s",
@@ -922,19 +942,24 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
                     GSS_C_NT_HOSTBASED_SERVICE,
                     &accepted_peer_names[s]);
              }
+#endif
 
              free(fqhn);
        }
    }
    
    rval = GSI_SOCKET_authentication_init(attrs->gsi_socket,
+#if GLOBUS
 					 accepted_peer_names);
+#else
+					 accepted_peer_names, attrs);
+#endif
    if (rval == GSI_SOCKET_UNAUTHORIZED) {
        /* This is a common error.  Send the GSI errors to debug and
 	  return a more friendly error message in verror(). */
        GSI_SOCKET_get_error_string(attrs->gsi_socket, error_string,
                                    sizeof(error_string));
-       myproxy_debug("Error authenticating: %s\n", error_string);
+       myproxy_debug("Error authenticating1: %s\n", error_string);
        GSI_SOCKET_get_peer_name(attrs->gsi_socket, peer_name,
 				sizeof(peer_name));
        if (server_dn) {
@@ -956,7 +981,7 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
    } else if (rval == GSI_SOCKET_ERROR) {
        GSI_SOCKET_get_error_string(attrs->gsi_socket, error_string,
                                    sizeof(error_string));
-       verror_put_string("Error authenticating: %s\n", error_string);
+       verror_put_string("Error authenticating2: %s\n", error_string);
        goto error;
    }
 
@@ -1713,6 +1738,7 @@ myproxy_serialize_response_ex(const myproxy_response_t *response,
         return -1;
     
     /*Authorization data*/
+#if GLOBUS_TODO
     if ((p = response->authorization_data)) {
        while (*p) {
 	  len = my_append(data, MYPROXY_AUTHORIZATION_STRING,
@@ -1723,6 +1749,7 @@ myproxy_serialize_response_ex(const myproxy_response_t *response,
 	  p++;
        }
     }
+#endif
 
     /* Include credential info in OK response to INFO request */
     if (response->response_type == MYPROXY_OK_RESPONSE &&
@@ -2575,7 +2602,9 @@ int myproxy_recv_response_ex(myproxy_socket_attrs_t *socket_attrs,
 					     client_request) != 0) {
 		return -1;
 	    }
+#if GLOBUS_TODO
 	    authorization_data_free(server_response->authorization_data);
+#endif
 	    server_response->authorization_data = NULL;
 	}
     } while (server_response->response_type == MYPROXY_AUTHORIZATION_RESPONSE);
@@ -2597,6 +2626,7 @@ int myproxy_handle_authorization(myproxy_socket_attrs_t *attrs,
 
    response_type = server_response->response_type;
    if (response_type == MYPROXY_AUTHORIZATION_RESPONSE) {
+#if GLOBUS_TODO
        /* Server wants authorization. Try the possibilities. */
        if (client_request->authzcreds != NULL) { /* We have an AUTHZ cert. */
 	   d = authorization_create_response(
@@ -2620,6 +2650,7 @@ int myproxy_handle_authorization(myproxy_socket_attrs_t *attrs,
 		   client_request->passphrase,
 		   strlen(client_request->passphrase) + 1);
        }
+#endif
        if (d == NULL) { /* No acceptable methods found. */
 	   verror_put_string("Unable to respond to server's authentication challenge.");
 	   goto end;
@@ -2699,8 +2730,10 @@ myproxy_free(myproxy_socket_attrs_t *attrs,
     if (response != NULL) {
        if (response->version != NULL) 
     	  free(response->version);
+#if GLOBUS_TODO
        if (response->authorization_data != NULL)
     	  authorization_data_free(response->authorization_data);
+#endif
        if (response->error_string != NULL)
 	   free(response->error_string);
        if (response->info_creds != NULL) {
@@ -3216,6 +3249,8 @@ parse_entry(char *buffer, authorization_data_t *data)
    char *p = buffer;
    author_method_t method;
 
+#if GLOBUS_TODO
+
    assert (data != NULL);
 
    while (*p == '\0') 
@@ -3245,6 +3280,9 @@ parse_entry(char *buffer, authorization_data_t *data)
    data->method = method;
 
    return str + strlen(str);
+#else
+return NULL;
+#endif
 }
 
 /* 
@@ -3302,8 +3340,10 @@ parse_auth_data(char *buffer, authorization_data_t ***auth_data)
    *auth_data = data;
 
 end:
+#if GLOBUS_TODO
    if (return_status == -1)
       authorization_data_free(data);
+#endif
    return return_status;
 }
 

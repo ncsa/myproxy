@@ -493,7 +493,9 @@ generate_certificate( X509_REQ                 *request,
   FILE * inkey = NULL;
   FILE * issuer_cert_file = NULL;
 
+#if GLOBUS
   globus_result_t globus_result;
+#endif
 
   myproxy_debug("Generating certificate internally.");
 
@@ -520,6 +522,7 @@ generate_certificate( X509_REQ                 *request,
 
   subject = X509_get_subject_name(cert);
 
+#if GLOBUS
   globus_result =
       globus_gsi_cert_utils_get_x509_name(userdn, strlen(userdn), subject);
   if (globus_result != GLOBUS_SUCCESS) {
@@ -527,6 +530,7 @@ generate_certificate( X509_REQ                 *request,
       globus_error_to_verror(globus_result);
       goto error;
   }
+#endif
 
   /* Verify that the subject has been correctly encoded and fix any
      problems we find.*/

@@ -13,9 +13,15 @@ struct _gsi_socket
     /* All these variables together indicate the last error we saw */
     char			*error_string;
     int				error_number;
+#if GLOBUS
     gss_ctx_id_t		gss_context;
     OM_uint32			major_status;
     OM_uint32			minor_status;
+#else
+    SSL_CTX			*ssl_ctx;
+    SSL			*ssl;
+    BIO                         *sbio;
+#endif
     char			*peer_name;
     int             limited_proxy; /* 1 if peer used a limited proxy */
     int             max_token_len;
