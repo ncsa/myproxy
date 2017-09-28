@@ -1942,7 +1942,6 @@ ssl_proxy_restrictions_set_limited(SSL_PROXY_RESTRICTIONS	*restrictions,
     return return_value;
 }
 
-#if GLOBUS
 int
 ssl_get_base_subject_file(const char *proxyfile, char **subject)
 {
@@ -1951,6 +1950,7 @@ ssl_get_base_subject_file(const char *proxyfile, char **subject)
    char			path[MAXPATHLEN];
 
    if (proxyfile == NULL) {
+#if GLOBUS
       char *user_cert = NULL;
       
       GLOBUS_GSI_SYSCONFIG_GET_PROXY_FILENAME(&user_cert,
@@ -1958,13 +1958,16 @@ ssl_get_base_subject_file(const char *proxyfile, char **subject)
       if (user_cert == NULL) {
 	  GLOBUS_GSI_SYSCONFIG_GET_USER_CERT_FILENAME(&user_cert, NULL);
 	  if (user_cert == NULL) {
+#endif
 	      verror_put_string("Unable to locate certificate to determine "
 				"subject name.");
 	      goto error;
+#if GLOBUS
 	  }
       }
       strncpy(path, user_cert, sizeof(path)-1);
       free(user_cert);
+#endif
    } else {
       strncpy(path, proxyfile, sizeof(path)-1);
    }
@@ -1995,10 +1998,12 @@ ssl_get_base_subject(SSL_CREDENTIALS *creds, char **subject)
       return SSL_ERROR;
    }
 
+#if GLOBUS_TODO
    sk_X509_unshift(creds->certificate_chain, creds->certificate);
    globus_gsi_cert_utils_get_base_name(client_subject,
 				       creds->certificate_chain);
    (void)sk_X509_shift(creds->certificate_chain);
+#endif
 
    X509_NAME_oneline(client_subject, client, sizeof(client));
    *subject = strdup(client);
@@ -2006,7 +2011,6 @@ ssl_get_base_subject(SSL_CREDENTIALS *creds, char **subject)
 
    return SSL_SUCCESS;
 }
-#endif
 
 int
 ssl_creds_to_buffer(SSL_CREDENTIALS *creds, unsigned char **buffer,
@@ -2128,11 +2132,11 @@ ssl_verify(unsigned char *data, int length,
    return SSL_SUCCESS;
 }
 
-#if GLOBUS
 /* Chain verifying is inspired by proxy_verify_chain() from GSI. */
 int
 ssl_verify_gsi_chain(SSL_CREDENTIALS *chain)
 {
+#if GLOBUS_TODO
    int                   return_status = SSL_ERROR;
    int                   i,j;
    char                  *certdir = NULL;
@@ -2285,11 +2289,15 @@ end:
    globus_gsi_callback_data_destroy(callback_data);
 
    return return_status;
+#else
+   return SSL_SUCCESS;
+#endif
 }
 
 int
 ssl_limited_proxy_chain(SSL_CREDENTIALS *chain)
 {
+#if GLOBUS_TODO
     X509 *cert = NULL;
     globus_gsi_cert_utils_cert_type_t   cert_type;
     int i;
@@ -2313,6 +2321,7 @@ ssl_limited_proxy_chain(SSL_CREDENTIALS *chain)
             return 1;
         }
     }
+#endif
     return 0;
 }
 
@@ -2334,7 +2343,6 @@ ssl_limited_proxy_file(const char path[])
    if (creds) ssl_credentials_destroy(creds);
    return return_value;
 }
-#endif
 
 int
 ssl_get_times(const char *path, time_t *not_before, time_t *not_after)

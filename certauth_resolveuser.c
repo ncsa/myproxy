@@ -22,6 +22,8 @@ int resolve_via_mapfile ( char * username, char ** dn ) {
   }
 
   *dn = userdn;
+#else
+  return_value = 1;
 #endif
 
  end:

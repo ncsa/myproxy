@@ -20,7 +20,6 @@ struct _gsi_socket
 #else
     SSL_CTX			*ssl_ctx;
     SSL			*ssl;
-    BIO                         *sbio;
 #endif
     char			*peer_name;
     int             limited_proxy; /* 1 if peer used a limited proxy */

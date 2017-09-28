@@ -763,7 +763,7 @@ myproxy_init_client(myproxy_socket_attrs_t *attrs) {
             close(attrs->socket_fd);
             attrs->socket_fd = -1;
         } else { /* Everything is good! Clear out the error string. */
-fprintf(stderr, "GSISCOKET GOOD!!!!!!!!!!!!\n");
+fprintf(stderr, "GSISCOKET GOOD (%d)!!!!!!!!!!!!\n", attrs->socket_fd);
             verror_clear();
         }
     }

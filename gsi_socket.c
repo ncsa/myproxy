@@ -621,7 +621,7 @@ GSI_SOCKET_check_creds(GSI_SOCKET *self)
 	return GSI_SOCKET_ERROR;
     }
 
-#if GLOBUS
+#if GLOBUS_TODO
     self->major_status = globus_gss_assist_acquire_cred(&self->minor_status,
 							GSS_C_BOTH,
 							&creds);
@@ -640,7 +640,7 @@ GSI_SOCKET_check_creds(GSI_SOCKET *self)
 	gss_release_cred(&minor_status, &creds);
     }
 #else
-    return_value = GSI_SOCKET_ERROR;
+    return_value = GSI_SOCKET_SUCCESS;
 #endif
     
     return return_value;
@@ -671,9 +671,8 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], my
 #if GLOBUS
     globus_result_t res;
 #else
-    BIO *sbio = 0;
-    SSL_CTX *ctx = 0;
-    SSL *ssl = 0;
+    SSL_CTX *ctx = NULL;
+    SSL *ssl = NULL;
 
 #endif
     
@@ -700,7 +699,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], my
 #if GLOBUS
     if (self->gss_context != GSS_C_NO_CONTEXT)
 #else
-    if (self->sbio != NULL)
+    if (self->ssl != NULL)
 #endif
     {
 	GSI_SOCKET_set_error_string(self, "GSI_SOCKET already authenticated");
@@ -788,22 +787,14 @@ OpenSSL_add_ssl_algorithms();
     SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
     #endif
 
-    if (!(sbio = BIO_new_ssl_connect(ctx))) goto error;
-    BIO_get_ssl(sbio, &ssl);
-    char chport[6];
-    snprintf(chport, sizeof(chport), "%d", attrs->psport);
-    BIO_set_conn_port(sbio, chport);
-    BIO_set_conn_hostname(sbio, attrs->pshost);
-fprintf(stderr, "SETTING SOCKFD to %d\n", self->sock);
-    BIO_set_fd(sbio, self->sock, 0);
+    ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, self->sock);
+    SSL_connect(ssl);
 
-    if (BIO_do_handshake(sbio) <= 0) goto error;
-    BIO_write(sbio, "0", 1);    /* GSI deleg flag */
-    if (BIO_flush(sbio) <= 0) goto error;
+    SSL_write(ssl, "0", 1);    /* GSI deleg flag */
 
     self->ssl_ctx = ctx;
     self->ssl = ssl;
-    self->sbio = sbio;
 #endif
 
     /* Verify that all service requests were honored. */
@@ -953,6 +944,9 @@ GSI_SOCKET_authentication_accept(GSI_SOCKET *self)
 							GSS_C_ACCEPT,
 							&creds);
 
+
+    ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, client);
     if (self->major_status != GSS_S_COMPLETE) {
 	goto error;
     }
@@ -1025,6 +1019,69 @@ GSI_SOCKET_authentication_accept(GSI_SOCKET *self)
     
     return return_value;
 #else
+    SSL_CTX *ctx = 0;
+    SSL *ssl = 0;
+SSL_library_init();
+SSL_load_error_strings();
+OpenSSL_add_ssl_algorithms();
+    #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
+    ctx = SSL_CTX_new(TLS_server_method());
+    SSL_CTX_set_min_proto_version(ctx, TLS1_VERSION);
+    #else
+    ctx = SSL_CTX_new(SSLv23_server_method());
+    /* No longer setting SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS since it seemed
+ *      * like a stop-gap measure to interoperate with broken SSL */
+    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+    #endif
+
+/* GLOBUS_TODO */
+    if (SSL_CTX_use_certificate_file(ctx, "/etc/grid-security/myproxy/hostcert.pem", SSL_FILETYPE_PEM) <= 0)
+	return GSI_SOCKET_ERROR;
+    if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/grid-security/myproxy/hostkey.pem", SSL_FILETYPE_PEM) <= 0)
+	return GSI_SOCKET_ERROR;
+    if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/grid-security/myproxy/hostkey.pem", SSL_FILETYPE_PEM) <= 0)
+	return GSI_SOCKET_ERROR;
+    if (!SSL_CTX_use_certificate_file(ctx,"/etc/grid-security/myproxy/hostcert.pem",SSL_FILETYPE_PEM)
+       || !SSL_CTX_use_PrivateKey_file(ctx,"/etc/grid-security/myproxy/hostkey.pem",SSL_FILETYPE_PEM)
+       || !SSL_CTX_check_private_key(ctx)) {
+
+       fprintf(stderr, "Error setting up SSL_CTX\n");
+       ERR_print_errors_fp(stderr);
+       return GSI_SOCKET_ERROR;
+    }
+
+    ssl = SSL_new(ctx);
+    if(!ssl) {
+      fprintf(stderr, "Can't locate SSL pointer\n");
+      return GSI_SOCKET_ERROR;
+    }
+
+    self->ssl_ctx = ctx;
+    self->ssl = ssl;
+
+    SSL_set_fd(ssl, self->sock);
+    if (SSL_accept(ssl) <= 0) {
+      ERR_print_errors_fp(stderr);
+      return GSI_SOCKET_ERROR;
+    }
+
+    /* Receieve and ignore the delegation flag for now */
+    unsigned char *pbuffer = NULL;
+    size_t pbuffer_len = 0;
+    GSI_SOCKET_read_token(self, &pbuffer, &pbuffer_len);
+    if (pbuffer_len != 1 || (*pbuffer) != '0') {
+      fprintf(stderr, "Bad delegation flag (%c)\n", pbuffer?*pbuffer:'?');
+      return GSI_SOCKET_ERROR;
+    }
+
+    /* Set peer_name */
+    X509 *client = SSL_get_peer_certificate(ssl);
+    if (client == NULL)
+        self->peer_name = strdup("<anonymous>");
+    else {
+        X509_NAME *name = X509_get_subject_name(client);
+        self->peer_name = X509_NAME_oneline(name, NULL, 0);
+    }
     return GSI_SOCKET_SUCCESS;
 #endif
 }
@@ -1242,7 +1299,6 @@ GSI_SOCKET_write_buffer(GSI_SOCKET *self,
     fprintf(stderr, "\nwrote:\n%d out of %d\n", bytes_written, buffer_len);
     if (bytes_written == buffer_len)
         return_value = 0;
-    if (BIO_flush(self->sbio) <= 0) goto error;
 #endif
   error:
     return return_value;
@@ -1383,14 +1439,14 @@ int GSI_SOCKET_read_token(GSI_SOCKET *self,
 	fd_set rfds;
 	struct timeval tv = { 0 };
 
-        bytes_read = BIO_read(self->sbio, local_buffer, sizeof(local_buffer));
+        bytes_read = SSL_read(self->ssl, local_buffer, sizeof(local_buffer));
         if (bytes_read > 0)
 	{
   fprintf(stderr, "\nBytes read:\n%d\n", bytes_read);
   *pbuffer = malloc((bytes_read+1) * sizeof (unsigned char)); /* GLOBUS_TODO */
   memcpy(*pbuffer, local_buffer, bytes_read * sizeof (unsigned char));
   *pbuffer_len = bytes_read;
-  (*pbuffer)[bytes_read] = NULL;
+  (*pbuffer)[bytes_read] = '\0';
   return GSI_SOCKET_SUCCESS;
 	}
 

@@ -4,7 +4,6 @@
 #include "auth_pam.h"
 #endif
 
-#if GLOBUS_TODO
 struct authorization_func {
    author_status_t (*get_status) (struct myproxy_creds *creds,
 				  char *client_name,
@@ -380,6 +379,7 @@ int auth_cert_check_client (authorization_data_t *auth_data,
        goto end;
    }
 
+#if GLOBUS_TODO
    if (config->limited_proxy == 0) {
        switch (ssl_limited_proxy_chain(chain)) {
        case 1:
@@ -393,6 +393,7 @@ int auth_cert_check_client (authorization_data_t *auth_data,
            goto end;
        }
    }
+#endif
 
    if (ssl_get_base_subject(chain, &authorization_subject) == SSL_ERROR) {
        verror_prepend_string("internal error: ssl_get_base_subject() failed");
@@ -724,4 +725,3 @@ authorization_create_response(authorization_data_t **data,
 
    return d;
 }
-#endif
