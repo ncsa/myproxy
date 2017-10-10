@@ -821,9 +821,11 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
        gss_buffer_desc server_dn_buffer;
        gss_buffer_desc status_buffer;
        OM_uint32 major_status, minor_status;
+#endif
 
        myproxy_debug("Expecting non-standard server DN \"%s\"\n", server_dn);
 
+#if GLOBUS
        server_dn_buffer.length = strlen(server_dn);
        server_dn_buffer.value = server_dn;
 
@@ -914,12 +916,9 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
        } else { /* old way */
 #if GLOBUS
            gss_buffer_desc name_buf;
-#endif
            const char *services[] = { "myproxy", "host" };
            int s;
-#if GLOBUS
            OM_uint32 major_status, minor_status;
-#endif
 
              fqhn = GSI_SOCKET_get_peer_hostname(attrs->gsi_socket);
              if (!fqhn) {
@@ -929,7 +928,6 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
                                    error_string);
                  goto error;
              }
-#if GLOBUS_TODO
              for (s = 0; s < (sizeof services)/(sizeof *services); s++)
              {
                name_buf.value = globus_common_create_string("%s@%s",
@@ -942,6 +940,9 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
                     GSS_C_NT_HOSTBASED_SERVICE,
                     &accepted_peer_names[s]);
              }
+#else
+             verror_put_string("Old server_identity_check_behavior NOT supported by non-GSSAPI MyProxy\n");
+             goto error;
 #endif
 
              free(fqhn);

@@ -7,6 +7,10 @@
 #include "myproxy_common.h"
 #include "gsi_socket_priv.h"
 
+#ifndef GLOBUS
+#include "openssl_hostname_validation.h"
+#endif
+
 
 /*********************************************************************
  *
@@ -639,8 +643,6 @@ GSI_SOCKET_check_creds(GSI_SOCKET *self)
 
 	gss_release_cred(&minor_status, &creds);
     }
-#else
-    return_value = GSI_SOCKET_SUCCESS;
 #endif
     
     return return_value;
@@ -673,7 +675,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], my
 #else
     SSL_CTX *ctx = NULL;
     SSL *ssl = NULL;
-
+    X509 *peer_cert = NULL;
 #endif
     
 #if GLOBUS
@@ -786,6 +788,7 @@ OpenSSL_add_ssl_algorithms();
  *      * like a stop-gap measure to interoperate with broken SSL */
     SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
     #endif
+    SSL_CTX_load_verify_locations(ctx, NULL, get_trusted_certs_path());
 
     ssl = SSL_new(ctx);
     SSL_set_fd(ssl, self->sock);
@@ -809,8 +812,10 @@ OpenSSL_add_ssl_algorithms();
     if (ret_flags & GSS_C_GLOBUS_LIMITED_PROXY_FLAG) {
         self->limited_proxy = 1;
     }
+#endif
 
     /* Check the authenticated identity of the server. */
+#if GLOBUS
     self->major_status = gss_inquire_context(&self->minor_status,
 					     self->gss_context,
 					     NULL,
@@ -829,10 +834,23 @@ OpenSSL_add_ssl_algorithms();
     }
 
     self->peer_name = strdup(gss_buffer.value);
+#else
+    peer_cert = SSL_get_peer_certificate(self->ssl);
+    if (peer_cert == NULL) {
+	GSI_SOCKET_set_error_string(self, "Server didn't present certificate");
+	goto error;
+    }
+    if (SSL_get_verify_result(self->ssl) != X509_V_OK) {
+	GSI_SOCKET_set_error_string(self, "Server certificate verification failed");
+	goto error;
+    }
+    self->peer_name = X509_NAME_oneline(X509_get_subject_name(peer_cert), NULL, 0);
+#endif
 
     myproxy_debug("server name: %s", self->peer_name);
     myproxy_debug("checking that server name is acceptable...");
 
+#if GLOBUS
     /* We told gss_assist_init_sec_context() not to check the server
        name so we can check it manually here. */
     for (i=0; accepted_peer_names[i] != GSS_C_NO_NAME; i++) {
@@ -883,13 +901,25 @@ OpenSSL_add_ssl_algorithms();
 	}
 	gss_release_buffer(&self->minor_status, &apn_gss_buffer);
     }
+#else
+    for (i=0; accepted_peer_names[i] != NULL; i++) {
+	rc = (validate_hostname(accepted_peer_names[i], peer_cert) == MatchFound);
+	if (rc) {
+	   myproxy_debug("server name matches \"%s\"",
+			     accepted_peer_names[i]);
+	   break;
+	} else {
+	   myproxy_debug("server name does not match \"%s\"",
+		     accepted_peer_names[i]);
+	}
+    }
+#endif
     if (!rc) {		/* no match with acceptable target names */
 	GSI_SOCKET_set_error_string(self, "authenticated peer name does not match");
 	return_value = GSI_SOCKET_UNAUTHORIZED;
 	goto error;
     }
     myproxy_debug("authenticated server name is acceptable");
-#endif
 
     /* Success */
     return_value = GSI_SOCKET_SUCCESS;

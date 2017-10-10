@@ -61,6 +61,8 @@ LibSources= \
 	vomsclient.h \
 	voms_utils.c \
 	voms_utils.h \
+	openssl_hostname_validation.c \
+	openssl_hostname_validation.h \
 	vparse.c \
 	vparse.h
 
@@ -209,7 +211,7 @@ myproxy_admin_change_pass_LDADD = ./libmyproxy.la
 
 pkgdata_DATA = README INSTALL myproxy-server.config \
                LICENSE LICENSE.sasl LICENSE.netbsd LICENSE.pidfile \
-               LICENSE.safefile LICENSE.globus \
+               LICENSE.safefile LICENSE.globus LICENSE.iSEC_Partners \
                VERSION PROTOCOL \
                etc.services.modifications etc.inetd.conf.modifications \
                myproxy.cron myproxy-crl.cron myproxy-get-trustroots.cron \

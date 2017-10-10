@@ -1131,6 +1131,7 @@ int
 myproxy_init_server(myproxy_socket_attrs_t *attrs) 
 {
     int listen_sock=-1;
+#if GLOBUS_TODO
     GSI_SOCKET *tmp_gsi_sock;
 
     if ((tmp_gsi_sock = GSI_SOCKET_new(0)) == NULL) {
@@ -1145,6 +1146,7 @@ myproxy_init_server(myproxy_socket_attrs_t *attrs)
 	exit(1);
     }
     GSI_SOCKET_destroy(tmp_gsi_sock);
+#endif
     
     if (attrs->pshost || attrs->psport) {
         myproxy_debug("using getaddrinfo() to configure listen socket");
