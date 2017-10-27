@@ -141,7 +141,9 @@ main(int argc, char *argv[])
 	GLOBUS_GSI_SYSCONFIG_GET_PROXY_FILENAME(&outputfile,
 						GLOBUS_PROXY_FILE_OUTPUT);
 #else
-outputfile = strdup("/tmp/tmp_x509");
+	char filename[256];
+	snprintf(filename, sizeof(filename), "/tmp/x509up_u%d", geteuid());
+	outputfile = strdup(filename);
 #endif
     }
 

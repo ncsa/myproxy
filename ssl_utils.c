@@ -402,7 +402,7 @@ end:
  * Do any needed initialization for these routines.
  * Should be called first. Can be called multiple times.
  */
-static void
+void
 my_init()
 {
     static int my_inited = 0;
@@ -415,13 +415,15 @@ my_init()
 
 	SSL_load_error_strings();
 
-    SSL_library_init();
+        SSL_library_init();
 
 #if GLOBUS
 	globus_module_activate(GLOBUS_GSI_PROXY_MODULE);
 	globus_module_activate(GLOBUS_GSI_CREDENTIAL_MODULE);
 	globus_module_activate(GLOBUS_GSI_SYSCONFIG_MODULE);
 	globus_module_activate(GLOBUS_GSI_CERT_UTILS_MODULE);
+#else
+        OpenSSL_add_ssl_algorithms();
 #endif
     }
 }
@@ -1374,8 +1376,11 @@ ssl_proxy_delegation_init(SSL_CREDENTIALS	**new_creds,
 #if GLOBUS
     globus_result_t		local_result;
     globus_gsi_proxy_handle_attrs_t proxy_handle_attrs = NULL;
+#endif
     BIO	      			*bio = NULL;
+#if GLOBUS
     char                        *GT_PROXY_MODE = NULL;
+#endif
     char                *keybitsenv = NULL;
     int                 keybits = MYPROXY_DEFAULT_KEYBITS;
 
@@ -1391,6 +1396,7 @@ ssl_proxy_delegation_init(SSL_CREDENTIALS	**new_creds,
 
     *new_creds = ssl_credentials_new();
 
+#if GLOBUS
     globus_gsi_proxy_handle_attrs_init(&proxy_handle_attrs);
     globus_gsi_proxy_handle_attrs_set_keybits(proxy_handle_attrs, keybits);
 
@@ -1444,6 +1450,115 @@ ssl_proxy_delegation_init(SSL_CREDENTIALS	**new_creds,
 	verror_put_string("bio_to_buffer() failed");
 	goto error;
     }
+#else
+    EVP_PKEY_CTX *ctx;
+    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    if (!ctx) {
+        verror_put_string("EVP_PKEY_CTX_new_id() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+    if (EVP_PKEY_keygen_init(ctx) <= 0) {
+        verror_put_string("EVP_PKEY_keygen_init() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+    if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, keybits) <= 0) {
+        verror_put_string("EVP_PKEY_CTX_set_rsa_keygen_bits() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    /* Generate key */
+    if (EVP_PKEY_keygen(ctx, &((*new_creds)->private_key)) <= 0) {
+        verror_put_string("EVP_PKEY_keygen() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    X509_REQ *req = X509_REQ_new();
+    if (req == NULL) {
+        verror_put_string("X509_REQ_new() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    if (!X509_REQ_set_pubkey(req, (*new_creds)->private_key)) {
+        verror_put_string("X509_REQ_set_pubkey() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    X509_NAME *                         req_name = NULL;
+    X509_NAME_ENTRY *                   req_name_entry = NULL;
+
+    req_name = X509_NAME_new();
+    if(!req_name)
+    {
+        verror_put_string("X509_NAME_new() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    req_name_entry = X509_NAME_ENTRY_create_by_NID(
+        NULL,
+        NID_commonName,
+        V_ASN1_APP_CHOOSE,
+        (unsigned char *) "NULL SUBJECT NAME ENTRY",
+        -1);
+    if(!req_name_entry)
+    {
+        verror_put_string("X509_NAME_ENTRY_create_by_NID() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    if(!X509_NAME_add_entry(req_name,
+                            req_name_entry,
+                            X509_NAME_entry_count(req_name),
+                            0))
+    {
+        verror_put_string("X509_NAME_add_entry() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    if(req_name_entry)
+    {
+        X509_NAME_ENTRY_free(req_name_entry);
+        req_name_entry = NULL;
+    }
+
+    if (!X509_REQ_set_subject_name(req, req_name)) {
+        verror_put_string("X509_REQ_set_subject_name() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    if (!X509_REQ_sign(req, (*new_creds)->private_key, NULL)) {
+        verror_put_string("X509_REQ_set_pubkey() failed");
+	ssl_error_to_verror();
+        goto error;
+    }
+
+    bio = BIO_new(BIO_s_mem());
+    if (bio == NULL) {
+	verror_put_string("BIO_new() failed");
+	ssl_error_to_verror();
+	goto error;
+    }
+    /* if (!PEM_write_bio_X509_REQ(bio, req)) { */
+    if (!i2d_X509_REQ_bio(bio, req)) {
+	verror_put_string("PEM_write_bio_X509_REQ() failed");
+	ssl_error_to_verror();
+	goto error;
+    }
+    if (bio_to_buffer(bio, buffer, buffer_length) == SSL_ERROR) {
+	verror_put_string("bio_to_buffer() failed");
+	ssl_error_to_verror();
+	goto error;
+    }
+#endif
     
     /* Success */
     return_status = SSL_SUCCESS;
@@ -1453,7 +1568,6 @@ ssl_proxy_delegation_init(SSL_CREDENTIALS	**new_creds,
     if (bio) {
 	BIO_free(bio);
     }
-#endif
     
     return return_status;
 }

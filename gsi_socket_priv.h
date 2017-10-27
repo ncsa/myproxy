@@ -19,7 +19,7 @@ struct _gsi_socket
     OM_uint32			minor_status;
 #else
     SSL_CTX			*ssl_ctx;
-    SSL			*ssl;
+    SSL				*ssl;
 #endif
     char			*peer_name;
     int             limited_proxy; /* 1 if peer used a limited proxy */

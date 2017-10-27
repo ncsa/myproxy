@@ -379,6 +379,15 @@ GSI_SOCKET_destroy(GSI_SOCKET *self)
 	/* XXX Should deal with output_token_desc here */
 	gss_release_buffer(&self->minor_status, &output_token_desc);
     }
+#else
+    if (self->ssl != NULL) {
+	SSL_free(self->ssl);
+	self->ssl = NULL;
+    }
+    if (self->ssl_ctx != NULL) {
+	SSL_CTX_free(self->ssl_ctx);
+	self->ssl_ctx = NULL;
+    }
 #endif
 
     if (self->peer_name != NULL)
@@ -582,7 +591,7 @@ GSI_SOCKET_context_established(GSI_SOCKET *self)
 #if GLOBUS
     if (self->gss_context == GSS_C_NO_CONTEXT) {
 #else
-    if (self->ssl_ctx == NULL) {
+    if (self->ssl == NULL) {
 #endif
         return 0;
     }
@@ -652,7 +661,8 @@ int
 #if GLOBUS
 GSI_SOCKET_authentication_init(GSI_SOCKET *self, gss_name_t accepted_peer_names[])
 #else
-GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], myproxy_socket_attrs_t *attrs)
+GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[],
+						 myproxy_socket_attrs_t *attrs)
 #endif
 {
     int				token_status;
@@ -684,7 +694,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], my
     if (self == NULL || self->sock <= 0)
 #endif
     {
-        myproxy_debug("Self is NULL or sock not set\n");
+	GSI_SOCKET_set_error_string(self, "Self is NULL or sock not set\n");
 	return GSI_SOCKET_ERROR;
     }
 
@@ -694,7 +704,7 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], my
 #else
 	accepted_peer_names[0] == NULL) {
 #endif
-        myproxy_debug("accepted_peer_names (%s)\n", accepted_peer_names[0]?:"NULL");
+        GSI_SOCKET_set_error_string(self, "accepted_peer_names NULL or empty");
 	return GSI_SOCKET_ERROR;
     }
 
@@ -776,23 +786,26 @@ GSI_SOCKET_authentication_init(GSI_SOCKET *self, char *accepted_peer_names[], my
 
     
 #else
-SSL_library_init();
-SSL_load_error_strings();
-OpenSSL_add_ssl_algorithms();
+    my_init();
+
     #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
     ctx = SSL_CTX_new(TLS_client_method());
     SSL_CTX_set_min_proto_version(ctx, TLS1_VERSION);
     #else
     ctx = SSL_CTX_new(SSLv23_client_method());
     /* No longer setting SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS since it seemed
- *      * like a stop-gap measure to interoperate with broken SSL */
+     * like a stop-gap measure to interoperate with broken SSL */
     SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
     #endif
     SSL_CTX_load_verify_locations(ctx, NULL, get_trusted_certs_path());
 
     ssl = SSL_new(ctx);
     SSL_set_fd(ssl, self->sock);
-    SSL_connect(ssl);
+    if (SSL_connect(ssl) <= 0) {
+      GSI_SOCKET_set_error_string(self,
+                                  "SSL_connect failed");
+      goto error;
+    }
 
     SSL_write(ssl, "0", 1);    /* GSI deleg flag */
 
@@ -1051,39 +1064,36 @@ GSI_SOCKET_authentication_accept(GSI_SOCKET *self)
 #else
     SSL_CTX *ctx = 0;
     SSL *ssl = 0;
-SSL_library_init();
-SSL_load_error_strings();
-OpenSSL_add_ssl_algorithms();
+
+    my_init();
+
     #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
     ctx = SSL_CTX_new(TLS_server_method());
     SSL_CTX_set_min_proto_version(ctx, TLS1_VERSION);
     #else
     ctx = SSL_CTX_new(SSLv23_server_method());
     /* No longer setting SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS since it seemed
- *      * like a stop-gap measure to interoperate with broken SSL */
+     * like a stop-gap measure to interoperate with broken SSL */
     SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
     #endif
 
-/* GLOBUS_TODO */
-    if (SSL_CTX_use_certificate_file(ctx, "/etc/grid-security/myproxy/hostcert.pem", SSL_FILETYPE_PEM) <= 0)
-	return GSI_SOCKET_ERROR;
-    if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/grid-security/myproxy/hostkey.pem", SSL_FILETYPE_PEM) <= 0)
-	return GSI_SOCKET_ERROR;
-    if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/grid-security/myproxy/hostkey.pem", SSL_FILETYPE_PEM) <= 0)
-	return GSI_SOCKET_ERROR;
-    if (!SSL_CTX_use_certificate_file(ctx,"/etc/grid-security/myproxy/hostcert.pem",SSL_FILETYPE_PEM)
-       || !SSL_CTX_use_PrivateKey_file(ctx,"/etc/grid-security/myproxy/hostkey.pem",SSL_FILETYPE_PEM)
-       || !SSL_CTX_check_private_key(ctx)) {
+    /* GLOBUS_TODO: For now hard-coding the certificate location */
+    if (SSL_CTX_use_certificate_file(ctx,"/etc/grid-security/myproxy/hostcert.pem",SSL_FILETYPE_PEM) != 1
+       || SSL_CTX_use_PrivateKey_file(ctx,"/etc/grid-security/myproxy/hostkey.pem",SSL_FILETYPE_PEM) != 1
+       || SSL_CTX_check_private_key(ctx) != 1) {
 
-       fprintf(stderr, "Error setting up SSL_CTX\n");
-       ERR_print_errors_fp(stderr);
+       GSI_SOCKET_set_error_string(self,
+               "Error setting up SSL_CTX with certificate/key\n");
+       ssl_error_to_verror();
        return GSI_SOCKET_ERROR;
     }
 
     ssl = SSL_new(ctx);
     if(!ssl) {
-      fprintf(stderr, "Can't locate SSL pointer\n");
-      return GSI_SOCKET_ERROR;
+       GSI_SOCKET_set_error_string(self,
+      		"Can't get SSL pointer\n");
+       ssl_error_to_verror();
+       return GSI_SOCKET_ERROR;
     }
 
     self->ssl_ctx = ctx;
@@ -1091,8 +1101,8 @@ OpenSSL_add_ssl_algorithms();
 
     SSL_set_fd(ssl, self->sock);
     if (SSL_accept(ssl) <= 0) {
-      ERR_print_errors_fp(stderr);
-      return GSI_SOCKET_ERROR;
+        ssl_error_to_verror();
+        return GSI_SOCKET_ERROR;
     }
 
     /* Receieve and ignore the delegation flag for now */
@@ -1100,8 +1110,9 @@ OpenSSL_add_ssl_algorithms();
     size_t pbuffer_len = 0;
     GSI_SOCKET_read_token(self, &pbuffer, &pbuffer_len);
     if (pbuffer_len != 1 || (*pbuffer) != '0') {
-      fprintf(stderr, "Bad delegation flag (%c)\n", pbuffer?*pbuffer:'?');
-      return GSI_SOCKET_ERROR;
+       verror_put_string("Bad delegation flag (%c)\n", pbuffer?*pbuffer:'?');
+       GSI_SOCKET_set_error_string(self, "Bad delegation flag\n");
+       return GSI_SOCKET_ERROR;
     }
 
     /* Set peer_name */
@@ -1326,7 +1337,7 @@ GSI_SOCKET_write_buffer(GSI_SOCKET *self,
 /*     fprintf(stderr, "\nwrote:\n%s\n", buffer); */
 #else
     bytes_written = SSL_write(self->ssl, buffer, buffer_len);
-    fprintf(stderr, "\nwrote:\n%d out of %d\n", bytes_written, buffer_len);
+    /* fprintf(stderr, "\nwrote:\n%d out of %d\n", bytes_written, buffer_len); */
     if (bytes_written == buffer_len)
         return_value = 0;
 #endif
@@ -1472,12 +1483,12 @@ int GSI_SOCKET_read_token(GSI_SOCKET *self,
         bytes_read = SSL_read(self->ssl, local_buffer, sizeof(local_buffer));
         if (bytes_read > 0)
 	{
-  fprintf(stderr, "\nBytes read:\n%d\n", bytes_read);
-  *pbuffer = malloc((bytes_read+1) * sizeof (unsigned char)); /* GLOBUS_TODO */
-  memcpy(*pbuffer, local_buffer, bytes_read * sizeof (unsigned char));
-  *pbuffer_len = bytes_read;
-  (*pbuffer)[bytes_read] = '\0';
-  return GSI_SOCKET_SUCCESS;
+		myproxy_debug("\nBytes read:\n%d\n", bytes_read);
+		*pbuffer = malloc((bytes_read+1) * sizeof (unsigned char)); /* GLOBUS_TODO */
+		memcpy(*pbuffer, local_buffer, bytes_read * sizeof (unsigned char));
+		*pbuffer_len = bytes_read;
+		(*pbuffer)[bytes_read] = '\0';
+		return GSI_SOCKET_SUCCESS;
 	}
 
 	/* Check for more data on the socket.  We want the entire
@@ -1674,7 +1685,7 @@ GSI_SOCKET_delegation_accept(GSI_SOCKET *self,
 #if GLOBUS
     if (self->gss_context == GSS_C_NO_CONTEXT)
 #else
-    if (self->ssl_ctx == NULL)
+    if (self->ssl == NULL)
 #endif
     {
 	GSI_SOCKET_set_error_string(self, "GSI_SOCKET not authenticated");

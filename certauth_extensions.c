@@ -466,6 +466,88 @@ write_certificate(X509 *cert, const char serial[], const char dir[]) {
     return rval;
 }
 
+/*
+ * FROM: https://github.com/openssl/openssl/blob/master/apps/apps.c
+ *
+ * name is expected to be in the format /type0=value0/type1=value1/type2=...
+ * where characters may be escaped by \
+ */
+X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
+{
+    int nextismulti = 0;
+    char *work;
+    X509_NAME *n;
+
+    if (*cp++ != '/')
+        return NULL;
+
+    n = X509_NAME_new();
+    if (n == NULL)
+        return NULL;
+    work = OPENSSL_strdup(cp);
+    if (work == NULL)
+        goto err;
+
+    while (*cp) {
+        char *bp = work;
+        char *typestr = bp;
+        unsigned char *valstr;
+        int nid;
+        int ismulti = nextismulti;
+        nextismulti = 0;
+
+        /* Collect the type */
+        while (*cp && *cp != '=')
+            *bp++ = *cp++;
+        if (*cp == '\0') {
+            verror_put_string(
+                    "parse_name: Hit end of string before finding the equals.");
+            goto err;
+        }
+        *bp++ = '\0';
+        ++cp;
+
+        /* Collect the value. */
+        valstr = (unsigned char *)bp;
+        for (; *cp && *cp != '/'; *bp++ = *cp++) {
+            if (canmulti && *cp == '+') {
+                nextismulti = 1;
+                break;
+            }
+            if (*cp == '\\' && *++cp == '\0') {
+                verror_put_string(
+                        "parse_name: escape character at end of string\n");
+                goto err;
+            }
+        }
+        *bp++ = '\0';
+
+        /* If not at EOS (must be + or /), move forward. */
+        if (*cp)
+            ++cp;
+
+        /* Parse */
+        nid = OBJ_txt2nid(typestr);
+        if (nid == NID_undef) {
+            verror_put_string("parse_name: Skipping unknown attribute \"%s\"\n",
+                      typestr);
+            continue;
+        }
+        if (!X509_NAME_add_entry_by_NID(n, nid, chtype,
+                                        valstr, strlen((char *)valstr),
+                                        -1, ismulti ? -1 : 0))
+            goto err;
+    }
+
+    OPENSSL_free(work);
+    return n;
+
+ err:
+    X509_NAME_free(n);
+    OPENSSL_free(work);
+    return NULL;
+}
+
 static EVP_PKEY  *e_cakey=NULL;
 static ENGINE    *engine=NULL;
 static int        engine_used=0;
@@ -520,14 +602,21 @@ generate_certificate( X509_REQ                 *request,
     goto error;
   }
 
+#if GLOBUS
   subject = X509_get_subject_name(cert);
 
-#if GLOBUS
   globus_result =
       globus_gsi_cert_utils_get_x509_name(userdn, strlen(userdn), subject);
   if (globus_result != GLOBUS_SUCCESS) {
       verror_put_string("globus_gsi_cert_utils_get_x509_name() failed");
       globus_error_to_verror(globus_result);
+      goto error;
+  }
+#else
+  subject = parse_name(userdn, MBSTRING_ASC, 1);
+  if (X509_set_subject_name(cert, subject) != 1) {
+      verror_put_string("X509_set_subject_name() failed");
+      ssl_error_to_verror();
       goto error;
   }
 #endif

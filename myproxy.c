@@ -763,7 +763,7 @@ myproxy_init_client(myproxy_socket_attrs_t *attrs) {
             close(attrs->socket_fd);
             attrs->socket_fd = -1;
         } else { /* Everything is good! Clear out the error string. */
-fprintf(stderr, "GSISCOKET GOOD (%d)!!!!!!!!!!!!\n", attrs->socket_fd);
+	    myproxy_debug("GSISOCKET FD (%d)", attrs->socket_fd);
             verror_clear();
         }
     }
@@ -776,6 +776,7 @@ fprintf(stderr, "GSISCOKET GOOD (%d)!!!!!!!!!!!!\n", attrs->socket_fd);
 static int
 new_server_identity_check_behavior_needed()
 {
+#if GLOBUS
    char *compat = NULL;
 
    compat = getenv("GLOBUS_GSSAPI_NAME_COMPATIBILITY");
@@ -785,6 +786,9 @@ new_server_identity_check_behavior_needed()
    } else {
        return 1; /* Perform new checks */
    }
+#else
+   return 1; /* Perform new checks */
+#endif
 }
 
 int 
@@ -960,7 +964,7 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
 	  return a more friendly error message in verror(). */
        GSI_SOCKET_get_error_string(attrs->gsi_socket, error_string,
                                    sizeof(error_string));
-       myproxy_debug("Error authenticating1: %s\n", error_string);
+       myproxy_debug("Error authenticating: %s\n", error_string);
        GSI_SOCKET_get_peer_name(attrs->gsi_socket, peer_name,
 				sizeof(peer_name));
        if (server_dn) {
@@ -982,7 +986,7 @@ myproxy_authenticate_init(myproxy_socket_attrs_t *attrs,
    } else if (rval == GSI_SOCKET_ERROR) {
        GSI_SOCKET_get_error_string(attrs->gsi_socket, error_string,
                                    sizeof(error_string));
-       verror_put_string("Error authenticating2: %s\n", error_string);
+       verror_put_string("Error authenticating: %s\n", error_string);
        goto error;
    }
 
@@ -3282,7 +3286,7 @@ parse_entry(char *buffer, authorization_data_t *data)
 
    return str + strlen(str);
 #else
-return NULL;
+   return NULL;
 #endif
 }
 

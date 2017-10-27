@@ -23,6 +23,7 @@ int resolve_via_mapfile ( char * username, char ** dn ) {
 
   *dn = userdn;
 #else
+  *dn = NULL;
   return_value = 1;
 #endif
 
